@@ -1,9 +1,11 @@
+import { gameGraph, ConnectionTypes } from './ScotlandYardGraph.js';
+
 const canvas = document.getElementById('myCanvas');
 const ctx = canvas.getContext('2d');
 const DEBUG = false;
 
 // Array to store station data
-const stations = [];
+const stations = {};
 
 // Load the map image
 const img = new Image();
@@ -14,7 +16,10 @@ img.onload = function() {
     ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
 
     // Draw some shapes on top of the image
-    if (DEBUG) drawStations();
+    if (DEBUG) {
+        drawStations();
+        drawConnections(ConnectionTypes.TAXI);
+    }
 };
 
 addStation(108, 32, 1);
@@ -219,17 +224,28 @@ addStation(599, 535, 199);
 
 // Function to create stations
 function addStation(x, y, id) {
-    stations.push({ x, y, radius: 15, id });
+    stations[id] = { x, y, radius: 15, id };
 }
 
 // Function to draw stations
 function drawStations() {
-    stations.forEach(station => {
+    Object.entries(stations).forEach(([id, station]) => {
         ctx.beginPath();
         ctx.arc(station.x, station.y, station.radius, 0, 2 * Math.PI);
         ctx.fillStyle = 'rgba(0, 150, 255, 0.5)';
         ctx.fill();
         ctx.stroke();
+    });
+}
+
+function drawConnections(ConnectionType=null){
+    Object.entries(stations).forEach(([id, station]) => {
+        const connectedStations = gameGraph.getConnections(id, ConnectionType);
+        for (const destination of connectedStations){
+            ctx.moveTo(station.x, station.y);
+            ctx.lineTo(stations[destination.station].x, stations[destination.station].y);
+            ctx.stroke();
+        }
     });
 }
 
@@ -247,7 +263,7 @@ canvas.addEventListener('mousemove', function(event) {
 
     // Check if mouse is over any station
     let isOverStation = false;
-    stations.forEach(station => {
+    Object.entries(stations).forEach(([id, station]) => {
         if (isInsideStation(mouseX, mouseY, station)) {
             isOverStation = true;
         }
@@ -262,8 +278,6 @@ canvas.addEventListener('mousemove', function(event) {
 });
 
 
-station_count = 3
-
 // Add event listener for mouse down (click) to detect left or right click
 canvas.addEventListener('mousedown', function(event) {
     const rect = canvas.getBoundingClientRect();
@@ -272,21 +286,18 @@ canvas.addEventListener('mousedown', function(event) {
 
     // Check which mouse button was clicked
     if (event.button === 0) { // Left click
-        stations.forEach(station => {
+        Object.entries(stations).forEach(([id, station]) => {
             if (isInsideStation(clickX, clickY, station)) {
                 addDetective(station);
             }
         });
     } else if (event.button === 2) { // Right click
-        stations.forEach(station => {
+        Object.entries(stations).forEach(([id, station]) => {
             if (isInsideStation(clickX, clickY, station)) {
                 addMrX(station);
             }
         });
         event.preventDefault(); // Prevent the default right-click menu from appearing
-    } if (event.button === 1) {
-        console.log(`addStation(${clickX}, ${clickY}, ${station_count})`);
-        station_count++;
     }
 });
 
@@ -294,8 +305,6 @@ canvas.addEventListener('mousedown', function(event) {
 canvas.addEventListener('contextmenu', function(event) {
     event.preventDefault(); // Prevent the default right-click menu
 });
-
-
 
 function addDetective(station)
 {
