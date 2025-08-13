@@ -540,7 +540,3 @@ gameGraph.addConnection(153, 163, ConnectionTypes.UNDERGROUND);
 gameGraph.addConnection(108, 115, ConnectionTypes.FERRY);
 gameGraph.addConnection(115, 157, ConnectionTypes.FERRY);
 gameGraph.addConnection(157, 194, ConnectionTypes.FERRY);
-
-
-// gameGraph.displayGraph(ConnectionTypes.BUS);
-// console.log(gameGraph.getConnections(14));

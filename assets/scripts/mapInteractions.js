@@ -6,21 +6,52 @@ const DEBUG = false;
 
 // Array to store station data
 const stations = {};
+const detectivePositions = {};
+let mrXPosition = {"station": -1, "ticktes":{
+    "Black": 2,
+    "DoubleMove": 2
+}};
 
-// Load the map image
-const img = new Image();
-img.src = "assets/images/map.png";
+resetCanvas();
 
-img.onload = function() {
-    // Draw the image as the background once it is loaded
-    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+function resetCanvas(){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Draw some shapes on top of the image
-    if (DEBUG) {
-        drawStations();
-        drawConnections(ConnectionTypes.TAXI);
-    }
-};
+    // map image
+    const img = new Image();
+    img.src = "assets/images/map.png";
+
+    img.onload = function() {
+        // Draw the map as the background 
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        for (let stationID in detectivePositions){
+            const img = new Image();
+            img.src = 'assets/images/Detective.png';
+
+
+            img.onload = function() {
+                ctx.drawImage(img, detectivePositions[stationID].station.x-10,  detectivePositions[stationID].station.y-10, 30, 30);
+            };
+        }
+
+        if (mrXPosition.station != -1) {
+            const img = new Image();
+            img.src = 'assets/images/MrX.png';
+
+
+            img.onload = function() {
+                ctx.drawImage(img, stations[mrXPosition.station].x-10, stations[mrXPosition.station].y-10, 30, 30);
+            };
+        }
+
+        // Draw some shapes on top of the image
+        if (DEBUG) {
+            drawStations();
+            drawConnections(ConnectionTypes.TAXI);
+        }
+    };
+}
 
 addStation(108, 32, 1);
 addStation(247, 37, 2);
@@ -288,13 +319,13 @@ canvas.addEventListener('mousedown', function(event) {
     if (event.button === 0) { // Left click
         Object.entries(stations).forEach(([id, station]) => {
             if (isInsideStation(clickX, clickY, station)) {
-                addDetective(station);
+                moveDetective(station);
             }
         });
     } else if (event.button === 2) { // Right click
         Object.entries(stations).forEach(([id, station]) => {
             if (isInsideStation(clickX, clickY, station)) {
-                addMrX(station);
+                moveMrX(station);
             }
         });
         event.preventDefault(); // Prevent the default right-click menu from appearing
@@ -306,12 +337,138 @@ canvas.addEventListener('contextmenu', function(event) {
     event.preventDefault(); // Prevent the default right-click menu
 });
 
-function addDetective(station)
-{
-    alert(`added Detective at ${station.id}`);
+async function createDropdown(options){
+    const overlay = document.createElement("div");
+    overlay.className = "dropdown-overlay";
+
+    overlay.addEventListener("contextmenu", function (e) {
+        e.preventDefault();
+    });
+
+
+    const select = document.createElement("select");
+    select.className = "dropdown-select";
+
+    const defaultOption = document.createElement("option");
+    defaultOption.value = "default"
+    defaultOption.textContent = "--- select a transportation mode ---";
+    
+    select.appendChild(defaultOption);
+
+    // Loop through possible transportation types and create option elements
+    options.forEach(optionText => {
+        const option = document.createElement("option");
+        option.value = optionText;
+        option.textContent = optionText;
+        select.appendChild(option);
+    });
+
+    // Add them to the DOM
+    document.body.appendChild(select);
+    document.body.appendChild(overlay)
+
+
+    const selectedType = await new Promise(resolve => {
+        select.addEventListener("change", () => {
+            resolve(select.value);
+        });
+    });
+
+    // remove the dropdown
+    select.remove();
+    overlay.remove();
+
+    return selectedType;
 }
 
-function addMrX(station)
+let lastSelectedStation = -1;
+async function moveDetective(station)
 {
-    alert(`added Mr. X at ${station.id}`);
+    // not enough Detectives
+    const amountDetectives = Object.keys(detectivePositions).length;
+    if (amountDetectives < 2) {
+        detectivePositions[station.id] = {station, "tickets": {
+            "Taxi": 10,
+            "Bus": 8,
+            "Underground": 4,
+        }};
+
+        resetCanvas();
+    } 
+
+    // Save last clicked station to move a detective on the next click
+    else if(lastSelectedStation == -1 && detectivePositions[station.id]) {
+        lastSelectedStation = station.id;
+    }
+    
+    // Move the detective to the new station and there isn't already another detective
+    else if (lastSelectedStation != -1 && !detectivePositions[station.id]){
+        // check if the new station is reachable with one available ticket
+        
+        // filter the correct connections and if they are possible to execute with the detective's tickets
+        const possibleConnections = gameGraph.getConnections(lastSelectedStation).filter(conn => conn.station === station.id && detectivePositions[lastSelectedStation].tickets[conn.type] > 0)
+
+        // no connection to next station
+        if (possibleConnections.length == 0){
+            // ERROR Message
+            const msg = document.createElement("div");
+            msg.className = "error-message";
+            msg.textContent = `There are no connections between ${lastSelectedStation} and ${station.id} \n or you don't have enough tickets!`;
+
+            document.body.appendChild(msg);
+
+            // Trigger fade-out after 1 second
+            setTimeout(() => {
+                msg.style.opacity = 0;
+            }, 1000);
+
+            // Remove from DOM after fade-out is done (1s + small buffer)
+            setTimeout(() => {
+                msg.remove();
+            }, 2000);
+        }
+
+        // only one possible connection to next station
+        else if(possibleConnections.length == 1){
+            detectivePositions[station.id] =  {station, "tickets": detectivePositions[lastSelectedStation].tickets};
+            detectivePositions[station.id].tickets[possibleConnections[0].type] -= 1
+            delete detectivePositions[lastSelectedStation];
+        }
+
+        // multiple ways to reach next station
+        else{
+            // Dropdown: Which type of transportation should be used
+            const selectedType = await createDropdown(possibleConnections.map(conn => conn.type))
+
+            // Move the detective
+            detectivePositions[station.id] =  {station, "tickets": detectivePositions[lastSelectedStation].tickets};
+            detectivePositions[station.id].tickets[selectedType] -= 1
+            delete detectivePositions[lastSelectedStation];
+        }
+        
+        lastSelectedStation = -1;
+        resetCanvas();
+    }
+}
+
+async function moveMrX(station)
+{
+    if (mrXPosition.station != -1){
+        const possibleTickets = Object.keys(mrXPosition.ticktes).filter(ticket => mrXPosition.ticktes[ticket] > 0);
+        
+        // Ticket(s) available
+        if (possibleTickets.length > 0){
+            possibleTickets.push("None");
+
+            // Dropdown: Which type of transportation should be used
+            const selectedType = await createDropdown(possibleTickets);
+            
+            if (selectedType != "None"){
+                mrXPosition.ticktes[selectedType] -= 1
+            }
+        }
+    }
+    
+    mrXPosition.station = station.id;
+    resetCanvas();
 }
